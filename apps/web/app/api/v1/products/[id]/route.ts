@@ -1,4 +1,4 @@
-import { prisma } from "@elp/db";
+import { prisma, Prisma } from "@elp/db";
 import { z } from "zod";
 import { ok, fail, parseBody } from "@/lib/api";
 import { requireRole } from "@/lib/rbac";
@@ -43,12 +43,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const parsed = await parseBody(req, Update);
   if (!parsed.ok) return parsed.response;
 
+  const { priceRangeMin, priceRangeMax, technicalSpecs, ...rest } = parsed.data;
   const updated = await prisma.product.update({
     where: { id: params.id },
     data: {
-      ...parsed.data,
-      priceRangeMin: parsed.data.priceRangeMin != null ? (parsed.data.priceRangeMin as any) : undefined,
-      priceRangeMax: parsed.data.priceRangeMax != null ? (parsed.data.priceRangeMax as any) : undefined,
+      ...rest,
+      priceRangeMin: priceRangeMin ?? undefined,
+      priceRangeMax: priceRangeMax ?? undefined,
+      technicalSpecs:
+        technicalSpecs === undefined
+          ? undefined
+          : technicalSpecs === null
+            ? Prisma.JsonNull
+            : (technicalSpecs as Prisma.InputJsonValue),
     },
   });
   await writeAudit({

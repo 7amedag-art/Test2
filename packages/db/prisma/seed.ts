@@ -175,14 +175,12 @@ async function seedSampleManufacturers() {
   ];
 
   for (const m of samples) {
-    await prisma.manufacturer.upsert({
-      where: { id: m.manufacturerName }, // placeholder; upsert by name via findFirst
-      update: {},
-      create: m as any,
-    }).catch(async () => {
-      const exists = await prisma.manufacturer.findFirst({ where: { manufacturerName: m.manufacturerName } });
-      if (!exists) await prisma.manufacturer.create({ data: m as any });
+    const exists = await prisma.manufacturer.findFirst({
+      where: { manufacturerName: m.manufacturerName },
     });
+    if (!exists) {
+      await prisma.manufacturer.create({ data: m });
+    }
   }
   console.log(`✓ Seeded sample manufacturers`);
 }

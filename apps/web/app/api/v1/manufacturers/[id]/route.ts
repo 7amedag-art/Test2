@@ -22,12 +22,18 @@ const Update = z.object({
 });
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const m = await prisma.manufacturer.findUnique({
-    where: { id: params.id },
-    include: { products: { include: { product: true } }, evidence: true },
-  });
+  const [m, evidence] = await Promise.all([
+    prisma.manufacturer.findUnique({
+      where: { id: params.id },
+      include: { products: { include: { product: true } } },
+    }),
+    prisma.evidence.findMany({
+      where: { entityType: "manufacturer", entityId: params.id },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   if (!m) return fail("not_found", 404);
-  return ok(m);
+  return ok({ ...m, evidence });
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {

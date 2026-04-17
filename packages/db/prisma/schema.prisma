@@ -250,8 +250,10 @@ model Product {
   manufacturers       ProductManufacturer[]
   localizationStatus  LocalizationStatus?
   gapAnalysis         GapAnalysis?
-  evidence            Evidence[]            @relation("ProductEvidence")
   documents           Document[]            @relation("ProductDocuments")
+  // Evidence is polymorphic (entity_type + entity_id) — fetched via an
+  // explicit query rather than a typed relation, so we don't emit conflicting
+  // foreign keys on the shared entity_id column.
 
   @@index([category])
   @@index([industrySegment])
@@ -288,8 +290,8 @@ model Manufacturer {
   updatedAt DateTime @updatedAt      @map("updated_at")
 
   products              ProductManufacturer[]
-  evidence              Evidence[]            @relation("ManufacturerEvidence")
   documents             Document[]            @relation("ManufacturerDocuments")
+  // Evidence polymorphic — queried via entity_type='manufacturer'.
 
   @@index([isLocal])
   @@index([country])
@@ -401,11 +403,11 @@ model Evidence {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
 
-  verifiedBy   User?         @relation("EvidenceVerifier", fields: [verifiedById], references: [id])
-  // Optional explicit relations (polymorphic kept via entityType/entityId but add
-  // opt relations to help queries):
-  product      Product?      @relation("ProductEvidence",      fields: [entityId], references: [id], map: "evidence_product_fk", onDelete: NoAction, onUpdate: NoAction)
-  manufacturer Manufacturer? @relation("ManufacturerEvidence", fields: [entityId], references: [id], map: "evidence_manufacturer_fk", onDelete: NoAction, onUpdate: NoAction)
+  verifiedBy User? @relation("EvidenceVerifier", fields: [verifiedById], references: [id])
+
+  // Intentionally NO typed relations to Product/Manufacturer — the
+  // (entityType, entityId) pair is polymorphic and cannot carry two foreign
+  // keys on the same column. Callers query via entityType + entityId.
 
   @@index([entityType, entityId])
   @@index([claimType])

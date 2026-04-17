@@ -1,4 +1,4 @@
-import { prisma, type Prisma } from "@elp/db";
+import { prisma, Prisma } from "@elp/db";
 import { z } from "zod";
 import { ok, fail, parseBody } from "@/lib/api";
 import { requireRole } from "@/lib/rbac";
@@ -71,11 +71,15 @@ export async function POST(req: Request) {
   if (!parsed.ok) return parsed.response;
 
   try {
+    const { priceRangeMin, priceRangeMax, technicalSpecs, ...rest } = parsed.data;
     const created = await prisma.product.create({
       data: {
-        ...parsed.data,
-        priceRangeMin: parsed.data.priceRangeMin != null ? (parsed.data.priceRangeMin as any) : null,
-        priceRangeMax: parsed.data.priceRangeMax != null ? (parsed.data.priceRangeMax as any) : null,
+        ...rest,
+        priceRangeMin: priceRangeMin ?? undefined,
+        priceRangeMax: priceRangeMax ?? undefined,
+        technicalSpecs: technicalSpecs == null
+          ? Prisma.JsonNull
+          : (technicalSpecs as Prisma.InputJsonValue),
         approvalStatus: "draft",
         localizationStatus: { create: {} },
         gapAnalysis:       { create: {} },

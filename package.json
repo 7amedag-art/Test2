@@ -22,6 +22,9 @@
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
+    "@elp/db": "workspace:*",
+    "@prisma/client": "^5.22.0",
+    "csv-parse": "^5.5.6",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "@types/node": "^22.9.0"

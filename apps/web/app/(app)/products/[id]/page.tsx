@@ -8,16 +8,21 @@ export const dynamic = "force-dynamic";
 export default async function ProductDetail({ params }: { params: { id: string } }) {
   const locale = getLocale();
   const m = getMessages(locale);
-  const product = await prisma.product.findUnique({
-    where: { id: params.id },
-    include: {
-      manufacturers: { include: { manufacturer: true } },
-      localizationStatus: true,
-      gapAnalysis: true,
-      evidence: true,
-      documents: true,
-    },
-  });
+  const [product, evidence] = await Promise.all([
+    prisma.product.findUnique({
+      where: { id: params.id },
+      include: {
+        manufacturers: { include: { manufacturer: true } },
+        localizationStatus: true,
+        gapAnalysis: true,
+        documents: true,
+      },
+    }),
+    prisma.evidence.findMany({
+      where: { entityType: "product", entityId: params.id },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   if (!product) notFound();
 
   const name = locale === "ar" ? product.productNameAr ?? product.productNameEn : product.productNameEn;
@@ -104,11 +109,11 @@ export default async function ProductDetail({ params }: { params: { id: string }
 
       <section className="card p-5">
         <h2 className="text-lg font-medium mb-2">Evidence</h2>
-        {product.evidence.length === 0 ? (
+        {evidence.length === 0 ? (
           <p className="text-sm text-ink-500">{m.common.noData}</p>
         ) : (
           <ul className="text-sm space-y-2">
-            {product.evidence.map((e) => (
+            {evidence.map((e) => (
               <li key={e.id} className="border-s-2 border-brand-500 ps-3">
                 <div className="font-medium">{e.claimType} — {e.sourceName}</div>
                 <div className="text-ink-500 text-xs">
