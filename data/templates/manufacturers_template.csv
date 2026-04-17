@@ -1,0 +1,4 @@
+manufacturer_name,is_local,manufacturer_type,local_capability_level,country,city,website,capabilities,certifications,status,established_year,employee_count_range,verification_status,notes
+Siemens Energy,false,global_oem,non_manufacturing,Germany,,https://www.siemens-energy.com,"gas turbines;generators;transformers","ISO 9001;API 616",active,2020,10000+,verified,Global OEM
+Dussur,true,local_manufacturer,partial_manufacturing,Saudi Arabia,Riyadh,https://www.dussur.com.sa,"industrial JVs;heavy equipment","ISO 9001",expanding,2014,500-1000,verified,KSA industrial investment holding
+Desert Technologies,true,local_manufacturer,assembly_only,Saudi Arabia,Jeddah,,"PV module assembly","IEC 61215;IEC 61730",active,2012,100-500,pending,PV assembler

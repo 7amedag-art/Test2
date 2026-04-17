@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-app: "IBM Plex Sans Arabic", "Inter", system-ui, sans-serif;
+}
+
+html, body { height: 100%; }
+body {
+  @apply bg-surface-50 text-ink-900 antialiased;
+  font-family: var(--font-app);
+}
+
+html[dir="rtl"] .ltr-only { display: none; }
+html[dir="ltr"] .rtl-only { display: none; }
+
+/* Simple card + button primitives (shadcn-style can come later) */
+.card  { @apply bg-surface-0 border border-surface-100 rounded-2xl shadow-sm; }
+.btn   { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition; }
+.btn-primary   { @apply bg-brand-600 text-white hover:bg-brand-700; }
+.btn-secondary { @apply bg-surface-100 text-ink-900 hover:bg-surface-0 border border-surface-100; }
+.badge        { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
+.badge-green  { @apply bg-emerald-50 text-emerald-700; }
+.badge-red    { @apply bg-rose-50 text-rose-700; }
+.badge-amber  { @apply bg-amber-50 text-amber-700; }
+.badge-blue   { @apply bg-brand-50 text-brand-700; }

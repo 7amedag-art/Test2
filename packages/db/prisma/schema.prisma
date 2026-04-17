@@ -1,0 +1,539 @@
+// Energy Localization Platform — Prisma Schema
+// Target: PostgreSQL 16 + pgvector
+// All textual user-facing fields support AR/EN via paired columns.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgvector(map: "vector", schema: "public")]
+}
+
+// =========================================================
+// Enums
+// =========================================================
+
+enum UserRole {
+  admin
+  analyst
+  viewer
+}
+
+enum IndustrySegment {
+  oil_gas
+  power
+  renewables
+  cross_sector
+}
+
+enum CriticalityLevel {
+  high
+  medium
+  low
+}
+
+enum ApprovalStatus {
+  draft
+  pending_review
+  approved
+  rejected
+  archived
+}
+
+enum ManufacturerType {
+  global_oem
+  local_manufacturer
+  assembler
+  distributor
+  service_provider
+}
+
+enum LocalCapabilityLevel {
+  full_manufacturing
+  partial_manufacturing
+  assembly_only
+  non_manufacturing
+}
+
+enum ManufacturerStatus {
+  active
+  new
+  expanding
+  inactive
+}
+
+enum VerificationStatus {
+  unverified
+  pending
+  verified
+  disputed
+  outdated
+}
+
+enum ProductManufacturerRelation {
+  primary_oem
+  licensed
+  assembler
+  distributor
+}
+
+enum SupplyRiskLevel {
+  critical
+  high
+  medium
+  low
+}
+
+enum LocalizationGap {
+  high
+  medium
+  low
+}
+
+enum Recommendation {
+  need_local_manufacturing
+  expand_existing_capacity
+  sufficient_local_supply
+}
+
+enum ClaimType {
+  product_spec
+  manufacturer_existence
+  manufacturer_capability
+  certification
+  localization_status
+  gap_assessment
+  other
+}
+
+enum AuditAction {
+  create
+  update
+  delete
+  link
+  unlink
+  approve
+  reject
+  verify
+  import
+}
+
+enum ApprovalEntityType {
+  localization_status
+  manufacturer_verification
+  gap_recommendation
+  product
+  manufacturer
+}
+
+enum DocumentSourceType {
+  product
+  manufacturer
+  datasheet
+  report
+  regulation
+  other
+}
+
+enum ChatMessageRole {
+  user
+  assistant
+  system
+}
+
+// =========================================================
+// Users / Auth
+// =========================================================
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  name          String?
+  image         String?
+  role          UserRole  @default(viewer)
+  hashedPassword String?  // for credentials provider; null for OAuth
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  // Platform relations
+  reviewedLocalizations  LocalizationStatus[]   @relation("LocalizationReviewer")
+  verifiedEvidence       Evidence[]             @relation("EvidenceVerifier")
+  auditLogs              AuditLog[]
+  approvalRequests       ApprovalRequest[]      @relation("ApprovalRequester")
+  approvalDecisions      ApprovalRequest[]      @relation("ApprovalDecider")
+  chatSessions           ChatSession[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique
+  userId       String   @db.Uuid
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// =========================================================
+// Products
+// =========================================================
+
+model Product {
+  id                   String           @id @default(uuid()) @db.Uuid
+  productCode          String           @unique @map("product_code")
+  productNameEn        String           @map("product_name_en")
+  productNameAr        String?          @map("product_name_ar")
+  category             String
+  subcategory          String?
+  descriptionEn        String?          @map("description_en") @db.Text
+  descriptionAr        String?          @map("description_ar") @db.Text
+  technicalSpecs       Json?            @map("technical_specs")
+  useCases             String[]         @map("use_cases")
+  industrySegment      IndustrySegment  @map("industry_segment")
+  criticalityLevel     CriticalityLevel @map("criticality_level")
+  strategicImportance  String?          @map("strategic_importance") @db.Text
+
+  // Added per requirements
+  hsCode               String?          @map("hs_code")
+  priceRangeMin        Decimal?         @map("price_range_min") @db.Decimal(18, 2)
+  priceRangeMax        Decimal?         @map("price_range_max") @db.Decimal(18, 2)
+  priceCurrency        String           @default("USD") @map("price_currency")
+  localContentPercent  Decimal?         @map("local_content_percent") @db.Decimal(5, 2)
+  approvalStatus       ApprovalStatus   @default(draft) @map("approval_status")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  manufacturers       ProductManufacturer[]
+  localizationStatus  LocalizationStatus?
+  gapAnalysis         GapAnalysis?
+  evidence            Evidence[]            @relation("ProductEvidence")
+  documents           Document[]            @relation("ProductDocuments")
+
+  @@index([category])
+  @@index([industrySegment])
+  @@index([criticalityLevel])
+  @@index([approvalStatus])
+  @@map("products")
+}
+
+// =========================================================
+// Manufacturers (global + local; distinguished by isLocal + type)
+// =========================================================
+
+model Manufacturer {
+  id                    String               @id @default(uuid()) @db.Uuid
+  manufacturerName      String               @map("manufacturer_name")
+  isLocal               Boolean              @default(false) @map("is_local")
+  manufacturerType      ManufacturerType     @map("manufacturer_type")
+  localCapabilityLevel  LocalCapabilityLevel @default(non_manufacturing) @map("local_capability_level")
+  country               String
+  city                  String?
+  website               String?
+  capabilities          String[]
+  certifications        String[]
+  status                ManufacturerStatus   @default(active)
+  establishedYear       Int?                 @map("established_year")
+  employeeCountRange    String?              @map("employee_count_range")
+  notes                 String?              @db.Text
+
+  // Verification
+  verificationStatus    VerificationStatus   @default(unverified) @map("verification_status")
+  lastVerifiedAt        DateTime?            @map("last_verified_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  products              ProductManufacturer[]
+  evidence              Evidence[]            @relation("ManufacturerEvidence")
+  documents             Document[]            @relation("ManufacturerDocuments")
+
+  @@index([isLocal])
+  @@index([country])
+  @@index([manufacturerType])
+  @@index([verificationStatus])
+  @@map("manufacturers")
+}
+
+// =========================================================
+// Product ↔ Manufacturer (M:N)
+// =========================================================
+
+model ProductManufacturer {
+  productId        String                      @db.Uuid @map("product_id")
+  manufacturerId   String                      @db.Uuid @map("manufacturer_id")
+  relationshipType ProductManufacturerRelation @map("relationship_type")
+  sinceYear        Int?                        @map("since_year")
+  verified         Boolean                     @default(false)
+  source           String?
+  notes            String?                     @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  manufacturer Manufacturer @relation(fields: [manufacturerId], references: [id], onDelete: Cascade)
+
+  @@id([productId, manufacturerId])
+  @@map("product_manufacturers")
+}
+
+// =========================================================
+// Localization status (1:1 with product)
+// =========================================================
+
+model LocalizationStatus {
+  productId               String          @id @db.Uuid @map("product_id")
+  isLocalized             Boolean         @default(false) @map("is_localized")
+  localManufacturersCount Int             @default(0) @map("local_manufacturers_count")
+  localizationPercentage  Decimal         @default(0) @map("localization_percentage") @db.Decimal(5, 2)
+  supplyRiskLevel         SupplyRiskLevel @default(medium) @map("supply_risk_level")
+  notes                   String?         @db.Text
+
+  // Review metadata (approval-light)
+  approvalStatus  ApprovalStatus @default(draft) @map("approval_status")
+  reviewedById    String?        @db.Uuid @map("reviewed_by_id")
+  reviewedAt      DateTime?      @map("reviewed_at")
+  lastReviewedAt  DateTime?      @map("last_reviewed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reviewedBy User?   @relation("LocalizationReviewer", fields: [reviewedById], references: [id])
+
+  @@map("localization_status")
+}
+
+// =========================================================
+// Gap Analysis (detailed scoring model)
+// =========================================================
+
+model GapAnalysis {
+  productId                    String           @id @db.Uuid @map("product_id")
+
+  // Component scores (0-100)
+  demandScore                  Decimal          @default(0) @map("demand_score") @db.Decimal(5, 2)
+  strategicScore               Decimal          @default(0) @map("strategic_score") @db.Decimal(5, 2)
+  localizationScore            Decimal          @default(0) @map("localization_score") @db.Decimal(5, 2)
+  manufacturingComplexityScore Decimal          @default(0) @map("manufacturing_complexity_score") @db.Decimal(5, 2)
+  supplyRiskScore              Decimal          @default(0) @map("supply_risk_score") @db.Decimal(5, 2)
+
+  // Derived
+  finalOpportunityScore        Decimal          @default(0) @map("final_opportunity_score") @db.Decimal(5, 2)
+  localizationGap              LocalizationGap  @default(medium) @map("localization_gap")
+  recommendation               Recommendation   @default(sufficient_local_supply)
+  rationale                    String?          @db.Text
+  estimatedDemand              String?          @map("estimated_demand") @db.Text
+
+  // Review metadata
+  approvalStatus  ApprovalStatus @default(draft) @map("approval_status")
+  computedAt      DateTime       @default(now()) @map("computed_at")
+  updatedAt       DateTime       @updatedAt      @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([localizationGap])
+  @@index([recommendation])
+  @@map("gap_analysis")
+}
+
+// =========================================================
+// Evidence / Verification
+// =========================================================
+
+model Evidence {
+  id                 String             @id @default(uuid()) @db.Uuid
+  entityType         String             @map("entity_type") // product | manufacturer | localization | gap
+  entityId           String             @db.Uuid @map("entity_id")
+  claimType          ClaimType          @map("claim_type")
+  sourceName         String             @map("source_name")
+  sourceUrl          String?            @map("source_url")
+  evidenceExcerpt    String?            @map("evidence_excerpt") @db.Text
+  verificationStatus VerificationStatus @default(unverified) @map("verification_status")
+  verifiedById       String?            @db.Uuid @map("verified_by_id")
+  verifiedAt         DateTime?          @map("verified_at")
+  confidenceScore    Decimal            @default(0) @map("confidence_score") @db.Decimal(5, 2)
+  notes              String?            @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  verifiedBy   User?         @relation("EvidenceVerifier", fields: [verifiedById], references: [id])
+  // Optional explicit relations (polymorphic kept via entityType/entityId but add
+  // opt relations to help queries):
+  product      Product?      @relation("ProductEvidence",      fields: [entityId], references: [id], map: "evidence_product_fk", onDelete: NoAction, onUpdate: NoAction)
+  manufacturer Manufacturer? @relation("ManufacturerEvidence", fields: [entityId], references: [id], map: "evidence_manufacturer_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([entityType, entityId])
+  @@index([claimType])
+  @@index([verificationStatus])
+  @@map("evidence")
+}
+
+// =========================================================
+// Approval Workflow (lightweight)
+// =========================================================
+
+model ApprovalRequest {
+  id          String             @id @default(uuid()) @db.Uuid
+  entityType  ApprovalEntityType @map("entity_type")
+  entityId    String             @db.Uuid @map("entity_id")
+  action      String             // "update" | "create" | "delete"
+  payloadDiff Json               @map("payload_diff")
+  status      ApprovalStatus     @default(pending_review)
+
+  requestedById String   @db.Uuid @map("requested_by_id")
+  requestedAt   DateTime @default(now()) @map("requested_at")
+
+  decidedById  String?   @db.Uuid @map("decided_by_id")
+  decidedAt    DateTime? @map("decided_at")
+  decisionNote String?   @map("decision_note") @db.Text
+
+  requestedBy User  @relation("ApprovalRequester", fields: [requestedById], references: [id])
+  decidedBy   User? @relation("ApprovalDecider",   fields: [decidedById],   references: [id])
+
+  @@index([status])
+  @@index([entityType, entityId])
+  @@map("approval_requests")
+}
+
+// =========================================================
+// Audit Log
+// =========================================================
+
+model AuditLog {
+  id         String      @id @default(uuid()) @db.Uuid
+  entityType String      @map("entity_type")
+  entityId   String      @db.Uuid @map("entity_id")
+  action     AuditAction
+  changes    Json?
+  userId     String?     @db.Uuid @map("user_id")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// =========================================================
+// Documents & RAG (scaffolded — populated in Phase 3)
+// =========================================================
+
+model Document {
+  id          String             @id @default(uuid()) @db.Uuid
+  sourceType  DocumentSourceType @map("source_type")
+  title       String
+  language    String             @default("en")
+  fileUrl     String?            @map("file_url")
+
+  // Optional typed back-refs (also keep the polymorphic source columns)
+  productId      String? @db.Uuid @map("product_id")
+  manufacturerId String? @db.Uuid @map("manufacturer_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  chunks       DocumentChunk[]
+  product      Product?      @relation("ProductDocuments",      fields: [productId],      references: [id], onDelete: SetNull)
+  manufacturer Manufacturer? @relation("ManufacturerDocuments", fields: [manufacturerId], references: [id], onDelete: SetNull)
+
+  @@index([sourceType])
+  @@index([productId])
+  @@index([manufacturerId])
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @db.Uuid @map("document_id")
+  chunkIndex Int      @map("chunk_index")
+  content    String   @db.Text
+  metadata   Json?
+  tokenCount Int?     @map("token_count")
+
+  // vector column managed via raw SQL migration (see init.sql / migrations)
+  // embedding  Unsupported("vector(1024)")?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_chunks")
+}
+
+// =========================================================
+// Chat (scaffolded — used in Phase 4)
+// =========================================================
+
+model ChatSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid @map("user_id")
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user     User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id           String          @id @default(uuid()) @db.Uuid
+  sessionId    String          @db.Uuid @map("session_id")
+  role         ChatMessageRole
+  content      String          @db.Text
+  retrievedIds String[]        @map("retrieved_ids") @db.Uuid
+  citations    Json?
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("chat_messages")
+}

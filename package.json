@@ -1,0 +1,33 @@
+{
+  "name": "energy-localization-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Energy sector localization intelligence platform for Saudi Arabia",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter @elp/web dev",
+    "build": "pnpm --filter @elp/web build",
+    "start": "pnpm --filter @elp/web start",
+    "db:generate": "pnpm --filter @elp/db generate",
+    "db:migrate": "pnpm --filter @elp/db migrate",
+    "db:push": "pnpm --filter @elp/db push",
+    "db:seed": "pnpm --filter @elp/db seed",
+    "db:reset": "pnpm --filter @elp/db reset",
+    "import:products": "tsx scripts/import-products.ts",
+    "template:generate": "tsx scripts/generate-template.ts",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "@types/node": "^22.9.0"
+  },
+  "packageManager": "pnpm@9.12.3",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

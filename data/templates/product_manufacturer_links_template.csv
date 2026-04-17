@@ -1,0 +1,4 @@
+product_code,manufacturer_name,relationship_type,since_year,verified,source,notes
+ELP-OG-001,Siemens Energy,primary_oem,2005,true,Public OEM catalog,
+ELP-OG-001,Dussur,licensed,2022,false,Press release,JV under negotiation
+ELP-RE-003,Desert Technologies,assembler,2015,true,Company website,Local PV assembly
