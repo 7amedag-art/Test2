@@ -13,22 +13,21 @@ const OUT = resolve(ROOT, "data/templates");
 type ColSpec = { name: string; example: string; notes?: string };
 
 const productsColumns: ColSpec[] = [
-  { name: "product_code", example: "ELP-OG-001", notes: "unique; stable identifier" },
-  { name: "product_name_en", example: "Industrial Gas Turbine (100-150 MW)" },
-  { name: "product_name_ar", example: "توربين غازي صناعي (100-150 ميجاواط)" },
-  { name: "category", example: "Rotating Equipment" },
-  { name: "subcategory", example: "Gas Turbines" },
-  { name: "description_en", example: "Heavy-duty gas turbine…" },
-  { name: "description_ar", example: "توربين غازي ثقيل…" },
-  { name: "industry_segment", example: "power", notes: "oil_gas|power|renewables|cross_sector" },
-  { name: "criticality_level", example: "high", notes: "high|medium|low" },
-  { name: "strategic_importance", example: "Critical for grid stability." },
-  { name: "hs_code", example: "8411.82" },
-  { name: "price_range_min", example: "30000000" },
-  { name: "price_range_max", example: "60000000" },
-  { name: "price_currency", example: "USD" },
-  { name: "use_cases", example: "Power generation;Cogeneration", notes: "semicolon-separated" },
-  { name: "technical_specs_json", example: '{"power_output_mw":"100-150"}', notes: "valid JSON" },
+  { name: "product_code",        example: "ELP-OG-001", notes: "unique; stable identifier" },
+  { name: "product_name_en",     example: "Industrial Gas Turbine (100-150 MW)" },
+  { name: "product_name_ar",     example: "توربين غازي صناعي (100-150 ميجاواط)" },
+  { name: "category",            example: "Rotating Equipment" },
+  { name: "subcategory",         example: "Gas Turbines" },
+  { name: "sector",              example: "power", notes: "oil_gas|petrochemicals|power|renewables" },
+  { name: "segment",             example: "generation", notes: "free-form sub-industry (upstream, olefins, solar_pv, …)" },
+  { name: "short_description_en", example: "Heavy-duty gas turbine for power generation." },
+  { name: "short_description_ar", example: "توربين غازي ثقيل لتوليد الكهرباء." },
+  { name: "hs_code",             example: "8411.82" },
+  { name: "criticality_level",   example: "high",   notes: "high|medium|low" },
+  { name: "complexity_level",    example: "high",   notes: "low|medium|high|very_high" },
+  { name: "localization_potential", example: "medium", notes: "low|medium|high|very_high" },
+  { name: "strategic_priority_score", example: "85", notes: "0-100 integer" },
+  { name: "notes",               example: "Critical for grid stability." },
 ];
 
 const manufacturersColumns: ColSpec[] = [

@@ -67,28 +67,87 @@ function toDecimalOrNull(v: string | undefined): string | null {
   return Number.isFinite(n) ? n.toString() : null;
 }
 
+function toNumOr(v: string | undefined, fallback: number): number {
+  if (!v) return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+// Sector names in the canonical dataset map onto the IndustrySegment enum.
+// Petrochemicals has no dedicated enum value yet, so it falls under
+// cross_sector; the original sector label is preserved in technical_specs.
+const SECTOR_TO_SEGMENT: Record<string, string> = {
+  oil_gas:        "oil_gas",
+  "oil & gas":    "oil_gas",
+  oilgas:         "oil_gas",
+  petrochemicals: "cross_sector",
+  petrochem:      "cross_sector",
+  power:          "power",
+  "conventional power": "power",
+  conventional_power:   "power",
+  renewables:     "renewables",
+  "renewable energy":   "renewables",
+  renewable_energy:     "renewables",
+};
+
+// Convert a qualitative level ("low" / "medium" / "high" / "very_high") into a
+// numeric 0-100 score used by GapAnalysis. Unknown inputs default to 50.
+function levelToScore(v: string | undefined): number {
+  const s = (v ?? "").toLowerCase().trim();
+  if (s === "very_high" || s === "very high") return 95;
+  if (s === "high")   return 80;
+  if (s === "medium" || s === "mid") return 55;
+  if (s === "low")    return 25;
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 50;
+}
+
 // ------------------------------ importers ------------------------------
 async function importProducts() {
   const rows = readCsv(productsPath);
   let inserted = 0, updated = 0;
   for (const r of rows) {
+    // Support both the original schema (industry_segment / description_en /
+    // strategic_importance / technical_specs_json) and the canonical dataset
+    // schema (sector / segment / short_description_* / complexity_level /
+    // localization_potential / strategic_priority_score / notes).
+    const sectorRaw = (r.sector || r.industry_segment || "cross_sector").toLowerCase();
+    const industrySegment = SECTOR_TO_SEGMENT[sectorRaw] ?? "cross_sector";
+    const segment = r.segment || null;
+    const descEn  = r.short_description_en || r.description_en || null;
+    const descAr  = r.short_description_ar || r.description_ar || null;
+    const notes   = r.notes || r.strategic_importance || null;
+
+    // Build technical_specs JSON. Prefer an explicit JSON blob if the old
+    // schema is used; otherwise synthesize a small object that preserves
+    // the sector label and qualitative levels for future filtering.
+    let specs = parseJsonOrNull(r.technical_specs_json);
+    if (!specs) {
+      const built: Record<string, string> = {};
+      if (r.sector)                built.sector               = r.sector;
+      if (segment)                 built.segment              = segment;
+      if (r.complexity_level)      built.complexity_level     = r.complexity_level;
+      if (r.localization_potential) built.localization_potential = r.localization_potential;
+      specs = Object.keys(built).length ? (built as Prisma.InputJsonValue) : undefined;
+    }
+
     const data = {
       productCode: r.product_code,
       productNameEn: r.product_name_en,
       productNameAr: r.product_name_ar || null,
       category: r.category,
       subcategory: r.subcategory || null,
-      descriptionEn: r.description_en || null,
-      descriptionAr: r.description_ar || null,
-      industrySegment: (r.industry_segment || "cross_sector") as any,
+      descriptionEn: descEn,
+      descriptionAr: descAr,
+      industrySegment: industrySegment as any,
       criticalityLevel: (r.criticality_level || "medium") as any,
-      strategicImportance: r.strategic_importance || null,
+      strategicImportance: notes,
       hsCode: r.hs_code || null,
       priceRangeMin: toDecimalOrNull(r.price_range_min),
       priceRangeMax: toDecimalOrNull(r.price_range_max),
       priceCurrency: r.price_currency || "USD",
       useCases: splitList(r.use_cases),
-      technicalSpecs: parseJsonOrNull(r.technical_specs_json) ?? undefined,
+      technicalSpecs: specs,
       approvalStatus: "pending_review" as any,
     };
 
@@ -100,7 +159,16 @@ async function importProducts() {
       update: data,
       create: data,
     });
-    // Ensure shell rows exist for localization & gap so downstream queries don't fail.
+
+    // Seed gap-analysis shell from the qualitative fields so analysts see
+    // meaningful initial numbers; full recomputation happens in Phase 2.
+    const strategicScore   = toNumOr(r.strategic_priority_score, 60);
+    const complexityScore  = levelToScore(r.complexity_level);
+    const localizationPot  = levelToScore(r.localization_potential);
+    // Localization potential is a capability ceiling, not current state:
+    // store current localization score as 0 (no data yet) and keep the
+    // potential on the manufacturing complexity axis + strategic axis.
+
     await prisma.localizationStatus.upsert({
       where: { productId: res.id },
       update: {},
@@ -108,8 +176,24 @@ async function importProducts() {
     });
     await prisma.gapAnalysis.upsert({
       where: { productId: res.id },
-      update: {},
-      create: { productId: res.id },
+      update: {
+        strategicScore,
+        manufacturingComplexityScore: complexityScore,
+      },
+      create: {
+        productId: res.id,
+        strategicScore,
+        manufacturingComplexityScore: complexityScore,
+        // seed other components at neutral defaults; Phase 2 recomputes.
+        demandScore: 60,
+        localizationScore: 0,
+        supplyRiskScore: Math.max(0, 100 - localizationPot),
+        finalOpportunityScore: Math.round(
+          (strategicScore * 0.4) +
+          ((100 - localizationPot) * 0.3) +
+          (complexityScore * 0.3),
+        ),
+      },
     });
 
     existing ? updated++ : inserted++;
